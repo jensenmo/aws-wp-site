@@ -354,9 +354,6 @@
             }
           }
         },
-        "AWS::CloudFormation::Designer": {
-          "id": "a1154123-e07f-4ff3-83d6-7f6d5a29c45c"
-        }
       },
       "Properties": {
 		"AssociatePublicIpAddress": "true",
