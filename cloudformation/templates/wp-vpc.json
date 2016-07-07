@@ -2,24 +2,35 @@
   "AWSTemplateFormatVersion": "2010-09-09",
   "Description": "AWS CloudFormation Template WordPress with autoscaling",
   "Parameters": {
-    "VpcId": {
-      "Type": "AWS::EC2::VPC::Id",
-      "Description": "VpcId of existing VPC"
+    "VPCCidrBlock": {
+      "Type": "String",
+      "Description": "CidrBlock of new VPC to be created",
+      "Default": "172.30.0.0/20"
     },
-    "DB1CidrBlock": {
+    "DBCidrBlock1": {
       "Type": "String",
       "Description": "CidrBlock of new Subnet to be created inside VPC",
-      "Default": "10.10.1.0/24"
+      "Default": "172.30.1.0/24"
     },
-    "DB2CidrBlock": {
+    "DBCidrBlock2": {
       "Type": "String",
       "Description": "CidrBlock of new Subnet to be created inside VPC",
-      "Default": "10.10.2.0/24"
+      "Default": "172.30.2.0/24"
     },
-    "WebServer1CidrBlock": {
+    "WebServerCidrBlock1": {
       "Type": "String",
-      "Description": "CidrBlock of new Subnet to be created inside VPC",
-      "Default": "10.10.8.0/24"
+      "Description": "CidrBlock of Subnet to be created inside VPC",
+      "Default": "172.30.4.0/24"
+    },
+    "WebServerCidrBlock2": {
+      "Type": "String",
+      "Description": "CidrBlock of Subnet to be created inside VPC",
+      "Default": "172.30.5.0/24"
+    },
+    "WebServerCidrBlock3": {
+      "Type": "String",
+      "Description": "CidrBlock of Subnet to be created inside VPC",
+      "Default": "172.30.6.0/24"
     },
     "KeyName": {
       "Description": "Name of an existing EC2 KeyPair to enable SSH access to the instances",
@@ -27,7 +38,7 @@
       "ConstraintDescription": "must be the name of an existing EC2 KeyPair."
     },
     "InstanceType": {
-      "Description": "WebServer  instance type",
+      "Description": "WebServer instance type",
       "Type": "String",
       "Default": "t2.micro",
       "AllowedValues": [
@@ -64,8 +75,8 @@
     "DBClass" : {
       "Description" : "Database instance class",
       "Type" : "String",
-      "Default" : "db.t2.micro",
-      "AllowedValues" : [ "db.t2.micro", "db.m3.medium", "db.m3.large", "db.m3.xlarge", "db.m3.2xlarge", "db.r3.large", "db.r3.xlarge", "db.r3.2xlarge", "db.r3.4xlarge", "db.r3.8xlarge", "db.m2.xlarge", "db.m2.2xlarge", "db.m2.4xlarge", "db.cr1.8xlarge"],
+      "Default" : "db.t2.small",
+      "AllowedValues" : [ "db.t2.micro", "db.t2.small", "db.m3.medium", "db.m3.large", "db.m3.xlarge", "db.m3.2xlarge", "db.r3.large", "db.r3.xlarge", "db.r3.2xlarge", "db.r3.4xlarge", "db.r3.8xlarge", "db.m2.xlarge", "db.m2.2xlarge", "db.m2.4xlarge", "db.cr1.8xlarge"],
       "ConstraintDescription" : "must select a valid database instance type."
     },
     "DBName": {
@@ -103,6 +114,18 @@
       "MaxLength": "41",
       "AllowedPattern": "[a-zA-Z0-9]*",
       "ConstraintDescription": "must contain only alphanumeric characters."
+    },
+    "VolumeName" : {
+      "Description" : "The name to be used for the EFS volume",
+      "Type": "String",
+      "MinLength": "1",
+      "Default": "aws-wp-site-test"
+    },
+    "MountPoint" : {
+      "Description" : "The Linux mount point for the EFS volume",
+      "Type": "String",
+      "MinLength": "1",
+      "Default": "website"
     }
   },
   "Mappings": {
@@ -188,20 +211,80 @@
     }
   },
   "Resources": {
+    "VPC": {
+      "Type": "AWS::EC2::VPC",
+      "Properties": {
+        "EnableDnsSupport" : "true",
+        "EnableDnsHostnames" : "true",
+        "CidrBlock": { "Ref" : "VPCCidrBlock" },
+        "Tags": [ {"Key": "Application", "Value": { "Ref": "AWS::StackId"} } ]
+      }
+    },
+    "InternetGateway" : {
+      "Type" : "AWS::EC2::InternetGateway",
+      "Properties" : {
+        "Tags" : [
+          { "Key" : "Application", "Value" : { "Ref" : "AWS::StackName" } },
+          { "Key" : "Network", "Value" : "Public" }
+        ]
+      }
+    },
+    "GatewayToInternet" : {
+      "Type" : "AWS::EC2::VPCGatewayAttachment",
+      "Properties" : {
+        "VpcId" : { "Ref" : "VPC" },
+        "InternetGatewayId" : { "Ref" : "InternetGateway" }
+      }
+    },
+    "RouteTable":{
+      "Type":"AWS::EC2::RouteTable",
+      "Properties":{
+        "VpcId": { "Ref":"VPC" }
+      }
+    },
+    "SubnetRouteTableAssoc1": {
+      "Type" : "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties" : {
+        "RouteTableId" : { "Ref" : "RouteTable" },
+        "SubnetId" : { "Ref" : "WebServerSubnet1" }
+      }
+    },
+    "SubnetRouteTableAssoc2": {
+      "Type" : "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties" : {
+        "RouteTableId" : { "Ref" : "RouteTable" },
+        "SubnetId" : { "Ref" : "WebServerSubnet2" }
+      }
+    },
+    "SubnetRouteTableAssoc3": {
+      "Type" : "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties" : {
+        "RouteTableId" : { "Ref" : "RouteTable" },
+        "SubnetId" : { "Ref" : "WebServerSubnet3" }
+      }
+    },
+    "InternetGatewayRoute": {
+        "Type":"AWS::EC2::Route",
+        "Properties":{
+            "DestinationCidrBlock":"0.0.0.0/0",
+            "RouteTableId":{"Ref":"RouteTable"},
+            "GatewayId":{"Ref":"InternetGateway"}
+        }
+    },
     "DBSubnet1": {
       "Type": "AWS::EC2::Subnet",
       "Properties": {
-        "VpcId": { "Ref": "VpcId" },
-        "CidrBlock":  { "Ref": "DB1CidrBlock" },
-        "AvailabilityZone": { "Fn::Select": [ 1, { "Fn::GetAZs" : "" } ] }
+        "VpcId": { "Ref" : "VPC" },
+        "CidrBlock":  { "Ref": "DBCidrBlock1" },
+        "AvailabilityZone": { "Fn::Select": [ 0, { "Fn::GetAZs" : "" } ] }
       }
     },
     "DBSubnet2": {
       "Type": "AWS::EC2::Subnet",
       "Properties": {
-        "VpcId": { "Ref": "VpcId" },
-        "CidrBlock":  { "Ref": "DB2CidrBlock" },
-        "AvailabilityZone": { "Fn::Select": [ 2, { "Fn::GetAZs" : "" } ] }
+        "VpcId": { "Ref" : "VPC" },
+        "CidrBlock":  { "Ref": "DBCidrBlock2" },
+        "AvailabilityZone": { "Fn::Select": [ 1, { "Fn::GetAZs" : "" } ] }
       }
     },
 	"DBSubnetGroup" : {
@@ -214,7 +297,7 @@
     "DBEC2SecurityGroup": {
       "Type": "AWS::EC2::SecurityGroup",
       "Properties" : {
-		"VpcId": { "Ref": "VpcId" },
+		"VpcId": { "Ref" : "VPC" },
         "GroupDescription": "Open database for access",
         "SecurityGroupIngress" : [{
           "IpProtocol" : "tcp",
@@ -238,18 +321,37 @@
         "DBSubnetGroupName" : { "Ref" : "DBSubnetGroup" }
       }
 	},
-    "WebServerSubnet": {
+    "WebServerSubnet1": {
       "Type": "AWS::EC2::Subnet",
       "Properties": {
-        "VpcId": { "Ref": "VpcId" },
-        "CidrBlock":  { "Ref": "WebServer1CidrBlock" },
-        "MapPublicIpOnLaunch": true
+        "VpcId": { "Ref" : "VPC" },
+        "CidrBlock":  { "Ref": "WebServerCidrBlock1" },
+        "MapPublicIpOnLaunch": true,
+        "AvailabilityZone": { "Fn::Select": [ 0, { "Fn::GetAZs" : "" } ] }
+      }
+    },
+    "WebServerSubnet2": {
+      "Type": "AWS::EC2::Subnet",
+      "Properties": {
+        "VpcId": { "Ref" : "VPC" },
+        "CidrBlock":  { "Ref": "WebServerCidrBlock2" },
+        "MapPublicIpOnLaunch": true,
+        "AvailabilityZone": { "Fn::Select": [ 1, { "Fn::GetAZs" : "" } ] }
+      }
+    },
+    "WebServerSubnet3": {
+      "Type": "AWS::EC2::Subnet",
+      "Properties": {
+        "VpcId": { "Ref" : "VPC" },
+        "CidrBlock":  { "Ref": "WebServerCidrBlock3" },
+        "MapPublicIpOnLaunch": true,
+        "AvailabilityZone": { "Fn::Select": [ 2, { "Fn::GetAZs" : "" } ] }
       }
     },
     "WebServerSecurityGroup": {
       "Type": "AWS::EC2::SecurityGroup",
       "Properties": {
-        "VpcId": { "Ref": "VpcId" },
+        "VpcId": { "Ref" : "VPC" },
         "GroupDescription": "Enable HTTP access via port 80 locked down to the ELB and SSH access",
         "SecurityGroupIngress": [
           { "IpProtocol" : "tcp",
@@ -266,6 +368,62 @@
             }
           }
         ]
+      }
+    },
+	"WebServerFileSystem" : {
+	  "Type" : "AWS::EFS::FileSystem",
+	  "Properties" : {
+
+	  }
+	},
+    "MountTargetSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "VpcId": { "Ref": "VPC" },
+        "GroupDescription": "Security group for mount target",
+        "SecurityGroupIngress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": "2049",
+            "ToPort": "2049",
+            "CidrIp": "0.0.0.0/0"
+          }
+        ]
+      }
+    },
+    "FileSystem": {
+      "Type": "AWS::EFS::FileSystem",
+      "Properties": {
+        "FileSystemTags": [
+          {
+            "Key": "Name",
+            "Value": { "Ref" : "VolumeName" }
+          }
+        ]
+      }
+    },
+    "MountTarget1": {
+      "Type": "AWS::EFS::MountTarget",
+      "Properties": {
+        "FileSystemId": { "Ref": "FileSystem" },
+        "SubnetId": { "Ref" : "WebServerSubnet1" },
+        "SecurityGroups": [ { "Ref": "MountTargetSecurityGroup" } ]        
+      }
+    },
+    "MountTarget2": {
+      "Type": "AWS::EFS::MountTarget",
+      "Properties": {
+        "FileSystemId": { "Ref": "FileSystem" },
+        "SubnetId": { "Ref" : "WebServerSubnet2" },
+        "SecurityGroups": [ { "Ref": "MountTargetSecurityGroup" } ]        
+      }
+    },
+    "MountTarget3": {
+      "Type": "AWS::EFS::MountTarget",
+      "Properties": {
+        "FileSystemId": { "Ref": "FileSystem" },
+        "SubnetId": { "Ref" : "WebServerSubnet3" },
+        "SecurityGroups": [ { "Ref": "MountTargetSecurityGroup" } ]        
       }
     },
     "LaunchConfig": {
@@ -319,7 +477,9 @@
                 "php"       : [],
                 "php-mysql" : [],
                 "mysql"     : [],
-                "httpd"     : []
+                "httpd"     : [],
+                "git"       : [],
+                "nfs-utils" : []
               }
             },
             "sources" : {
@@ -342,7 +502,10 @@
               }
             },
             "commands" : {
-              "01_configure_wordpress" : {
+              "01_createdir" : {
+                "command" : {"Fn::Join" : [ "", [ "mkdir /", { "Ref" : "MountPoint" }]]}
+              },
+              "02_configure_wordpress" : {
                 "command" : "/tmp/create-wp-config",
                 "cwd" : "/var/www/html/wordpress"
               }
@@ -352,8 +515,25 @@
                 "httpd" : { "enabled" : "true", "ensureRunning" : "true" }
               }
             }
+          },
+          "mount" : {
+            "commands" : {
+              "01_mount" : {
+                "command" : { "Fn::Join": [ "", [
+                  "mount -t nfs4 $(curl -s http://169.254.169.254/latest/meta-data/placement/availability-zone).",
+                  { "Ref": "FileSystem" },
+                  ".efs.",
+                  { "Ref": "AWS::Region" },
+                  ".amazonaws.com:/ /",
+                  {"Ref" : "MountPoint" }
+                ] ] }
+              },
+              "02_permissions" : {
+                "command" : {"Fn::Join" : [ "", [ "chown ec2-user:ec2-user /", { "Ref" : "MountPoint" }]]}
+              }
+            }
           }
-        },
+        }
       },
       "Properties": {
 		"AssociatePublicIpAddress": "true",
@@ -420,9 +600,10 @@
     },
     "WebServerGroup" : {
       "Type" : "AWS::AutoScaling::AutoScalingGroup",
+      "DependsOn": ["MountTarget1", "MountTarget2", "MountTarget3", "GatewayToInternet"],
       "Properties" : {
         "LaunchConfigurationName" : { "Ref" : "LaunchConfig" },
-        "VPCZoneIdentifier": [ { "Ref": "WebServerSubnet" } ],
+        "VPCZoneIdentifier": [ { "Ref": "WebServerSubnet1" }, { "Ref": "WebServerSubnet2" }, { "Ref": "WebServerSubnet3" } ],
         "MinSize" : "1",
         "DesiredCapacity" : "1",
         "MaxSize" : "2",
@@ -446,7 +627,7 @@
       "Type" : "AWS::EC2::SecurityGroup",
       "Properties" : {
         "GroupDescription" : "Enable HTTP/HTTPS access on port 80 to 80",
-        "VpcId" : { "Ref" : "VpcId" },
+        "VpcId" : { "Ref" : "VPC" },
         "SecurityGroupIngress" : [ { 
           "IpProtocol" : "tcp",
           "FromPort" : "80",
@@ -466,7 +647,7 @@
       "Properties" : {
         "SecurityGroups" : [ { "Ref" : "PublicElasticLoadBalancerSecurityGroup" } ],
         "CrossZone" : "true",
-        "Subnets" : [ { "Ref" : "WebServerSubnet" } ],
+        "Subnets" : [ { "Ref" : "WebServerSubnet1" }, { "Ref" : "WebServerSubnet2" }, { "Ref" : "WebServerSubnet3" } ],
         "LBCookieStickinessPolicy" : [ {
           "PolicyName" : "CookieBasedPolicy",
           "CookieExpirationPeriod" : "30"
@@ -488,6 +669,22 @@
     }
   },
   "Outputs": {
+    "MountTargetID1" : {
+      "Description" : "Mount target ID",
+      "Value" :  { "Ref" : "MountTarget1" }
+    },
+    "MountTargetID2" : {
+      "Description" : "Mount target ID",
+      "Value" :  { "Ref" : "MountTarget2" }
+    },
+    "MountTargetID3" : {
+      "Description" : "Mount target ID",
+      "Value" :  { "Ref" : "MountTarget3" }
+    },
+    "FileSystemID" : {
+      "Description" : "File system ID",
+      "Value" :  { "Ref" : "FileSystem" }
+    },	  
     "WebsiteURL": {
       "Value": {
         "Fn::Join": [
