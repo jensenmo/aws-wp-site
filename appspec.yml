@@ -1,0 +1,9 @@
+os: linux
+files:
+  - source: website/
+    destination: /var/wwwtest
+hooks:
+  AfterInstall:
+    -- location: website/update.sh
+       timeout: 180
+
