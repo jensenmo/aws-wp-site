@@ -4,6 +4,6 @@ files:
     destination: /var/wwwtest
 hooks:
   AfterInstall:
-    -- location: website/update.sh
-       timeout: 180
+    - location: website/update.sh
+      timeout: 180
 
